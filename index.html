@@ -151,6 +151,10 @@
                 <div class="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5 text-xs">
                     <span class="text-slate-400 text-[10px] sm:text-[11px]">RUANG:</span>
                     <strong id="displayRoomCode" class="font-mono text-amber-400 tracking-wider font-extrabold text-xs sm:text-sm">—</strong>
+                    <span id="syncStatus" title="Status sinkronisasi" class="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold text-slate-400">
+                        <span id="syncStatusDot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                        <span id="syncStatusText">MENYAMBUNG</span>
+                    </span>
                     <button onclick="copyRoomLink()" title="Salin Link Real-time" class="text-slate-400 hover:text-emerald-400 p-1 transition">
                         <i data-lucide="copy" class="w-3.5 h-3.5"></i>
                     </button>
@@ -672,32 +676,40 @@
             await initAuth();
 
             if (!firebaseReady) {
-                return {
-                    saveData: async () => {},
-                    unsubscribe: () => {}
-                };
+                window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'offline', message: 'Firebase belum dikonfigurasi' } }));
+                return { saveData: async () => false, unsubscribe: () => {} };
             }
 
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', roomCode);
 
-            // Firestore onSnapshot gives every connected client the newest document.
+            window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'connecting', message: 'Menghubungkan ke Firebase...' } }));
+
             const unsubscribe = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     onDataReceived(docSnap.data());
-                } else if (auth.currentUser) {
-                    setDoc(docRef, getInitialAppState()).catch(console.error);
+                    window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'connected', message: 'Realtime aktif' } }));
+                } else {
+                    window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'connected', message: 'Realtime aktif — menunggu data panitia' } }));
                 }
             }, (error) => {
                 console.error("Firestore sync error:", error);
+                window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'error', message: error.code || 'Firestore error' } }));
             });
 
             return {
                 saveData: async (data) => {
-                    if (!auth.currentUser) return;
+                    if (!auth.currentUser) {
+                        window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'error', message: 'Autentikasi Firebase belum aktif' } }));
+                        return false;
+                    }
                     try {
                         await setDoc(docRef, data);
+                        window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'connected', message: 'Data tersimpan' } }));
+                        return true;
                     } catch (err) {
                         console.error("Save error:", err);
+                        window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'error', message: err.code || 'Gagal menyimpan data' } }));
+                        return false;
                     }
                 },
                 unsubscribe
@@ -716,6 +728,26 @@
         let lastCloudPayload = '';
         let lastRenderedPayload = '';
         let renderQueued = false;
+
+        function updateSyncStatus(status, message) {
+            const dot = document.getElementById('syncStatusDot');
+            const text = document.getElementById('syncStatusText');
+            if (!dot || !text) return;
+            const styles = {
+                connected: ['bg-emerald-400', 'TERHUBUNG'],
+                connecting: ['bg-amber-400 animate-pulse', 'MENYAMBUNG'],
+                offline: ['bg-slate-500', 'OFFLINE'],
+                error: ['bg-red-400', 'ERROR']
+            };
+            const [cls, label] = styles[status] || styles.error;
+            dot.className = 'w-1.5 h-1.5 rounded-full ' + cls;
+            text.textContent = label;
+            text.title = message || label;
+        }
+
+        window.addEventListener('firebase-sync-status', (event) => {
+            updateSyncStatus(event.detail?.status || 'error', event.detail?.message || '');
+        });
 
         function refreshIcons(root = document) {
             if (!window.lucide || !root) return;
