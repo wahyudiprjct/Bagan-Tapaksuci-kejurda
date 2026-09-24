@@ -660,23 +660,36 @@
 
         // Initialize Authentication first
         async function initAuth() {
-            if (!firebaseReady) return;
+            if (!firebaseReady) return false;
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
+                if (!auth.currentUser) throw new Error('Firebase Auth tidak menghasilkan user.');
+                window.dispatchEvent(new CustomEvent('firebase-sync-status', {
+                    detail: { status: 'connecting', message: 'Authentication berhasil. Menghubungkan Firestore...' }
+                }));
+                return true;
             } catch (err) {
-                console.warn("Auth initialization fallback:", err);
+                console.error("Firebase Auth error:", err);
+                window.dispatchEvent(new CustomEvent('firebase-sync-status', {
+                    detail: { status: 'error', message: 'AUTH: ' + (err.code || err.message || 'gagal login') }
+                }));
+                return false;
             }
         }
 
         window.initFirebaseSync = async function(roomCode, onDataReceived) {
-            await initAuth();
+            const authenticated = await initAuth();
 
             if (!firebaseReady) {
                 window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'offline', message: 'Firebase belum dikonfigurasi' } }));
+                return { saveData: async () => false, unsubscribe: () => {} };
+            }
+
+            if (!authenticated || !auth.currentUser) {
                 return { saveData: async () => false, unsubscribe: () => {} };
             }
 
@@ -693,7 +706,8 @@
                 }
             }, (error) => {
                 console.error("Firestore sync error:", error);
-                window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'error', message: error.code || 'Firestore error' } }));
+                const detail = error?.code ? error.code + (error.message ? ' — ' + error.message : '') : (error?.message || 'Firestore error');
+                window.dispatchEvent(new CustomEvent('firebase-sync-status', { detail: { status: 'error', message: detail } }));
             });
 
             return {
@@ -743,6 +757,12 @@
             dot.className = 'w-1.5 h-1.5 rounded-full ' + cls;
             text.textContent = label;
             text.title = message || label;
+            const badge = document.getElementById('syncStatus');
+            if (badge) {
+                badge.dataset.error = message || '';
+                badge.onclick = (status === 'error') ? () => alert('Detail sinkronisasi Firebase:\n\n' + (message || 'Error tidak diketahui') + '\n\nCek Firebase Authentication (Anonymous) dan Firestore Rules.') : null;
+                badge.style.cursor = status === 'error' ? 'help' : '';
+            }
         }
 
         window.addEventListener('firebase-sync-status', (event) => {
