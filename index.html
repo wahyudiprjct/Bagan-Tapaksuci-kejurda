@@ -1504,10 +1504,30 @@
                     const nextMatch = classObj.matches.find(m => m.round === r + 1 && m.matchNum === Math.floor(i / 2) + 1);
 
                     if (nextMatch) {
-                        nextMatch.red = m1 ? m1.winner : null;
-                        nextMatch.blue = m2 ? m2.winner : null;
+                        const nextRed = m1 ? m1.winner : null;
+                        const nextBlue = m2 ? m2.winner : null;
 
-                        if (nextMatch.winner && nextMatch.winner !== nextMatch.red && nextMatch.winner !== nextMatch.blue) {
+                        // Compare athletes by stable id, not object reference.
+                        // Firestore/BroadcastChannel reconstructs objects, so the
+                        // same athlete can exist as different JS object instances.
+                        const previousRedId = nextMatch.red?.id ?? null;
+                        const previousBlueId = nextMatch.blue?.id ?? null;
+                        const nextRedId = nextRed?.id ?? null;
+                        const nextBlueId = nextBlue?.id ?? null;
+                        const participantsChanged =
+                            previousRedId !== nextRedId || previousBlueId !== nextBlueId;
+
+                        nextMatch.red = nextRed;
+                        nextMatch.blue = nextBlue;
+
+                        // If the semifinal winner/participant changes, reset the
+                        // downstream match result so the final can be decided again.
+                        const winnerStillValid =
+                            !nextMatch.winner ||
+                            nextMatch.winner.id === nextRedId ||
+                            nextMatch.winner.id === nextBlueId;
+
+                        if (participantsChanged || !winnerStillValid) {
                             nextMatch.winner = null;
                             nextMatch.scoreRed = null;
                             nextMatch.scoreBlue = null;
