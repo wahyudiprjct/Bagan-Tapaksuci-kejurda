@@ -60,8 +60,8 @@
         }
         
         .bracket-zoom-container {
-            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             transform-origin: top left;
+            will-change: transform;
         }
 
         @media print {
@@ -88,7 +88,8 @@
             touch-action: pan-x pan-y;
             scrollbar-gutter: stable;
         }
-        #bracketView { transform-origin: left top; min-width: max-content; }
+        #bracketView { transform-origin: left top; min-width: max-content; contain: layout paint; }
+        #athleteList, #dashboardClassGrid { contain: content; }
         .match-card { flex: 0 0 auto; }
 
         @media (max-width: 639px) {
@@ -703,6 +704,28 @@
         let adminPin = "1234";
         let syncHandler = null;
         let currentZoom = 1.0;
+        let cloudSaveTimer = null;
+        let lastCloudPayload = '';
+        let lastRenderedPayload = '';
+        let renderQueued = false;
+
+        function refreshIcons(root = document) {
+            if (!window.lucide || !root) return;
+            try { window.lucide.createIcons({ root }); } catch (_) {
+                try { window.refreshIcons(); } catch (_) {}
+            }
+        }
+
+        function scheduleRender() {
+            if (renderQueued) return;
+            renderQueued = true;
+            requestAnimationFrame(() => {
+                renderQueued = false;
+                renderClassTabs();
+                if (appState.activeTab === 'dashboard') renderDashboard();
+                else renderCurrentClass();
+            });
+        }
         let roomChannel = null;
         let localSyncReady = false;
         let lastLocalRevision = 0;
@@ -800,7 +823,7 @@
             document.getElementById('displayRoomCode').innerText = roomCode;
             updateRoleUI();
             connectRoomSync(roomCode);
-            lucide.createIcons();
+            refreshIcons();
 
             // Keep the UI fresh during development when the HTML is edited by a
             // local server/live-reload tool, without polling the tournament data.
@@ -827,10 +850,12 @@
                     if (msg.revision && msg.revision <= lastLocalRevision) return;
                     lastLocalRevision = msg.revision || Date.now();
                     if (msg.data && msg.data.classes) {
+                        const incoming = JSON.stringify(msg.data);
+                        if (incoming === lastRenderedPayload) return;
+                        lastRenderedPayload = incoming;
                         appState = msg.data;
                         ensureClassStructure();
-                        renderClassTabs();
-                        appState.activeTab === 'dashboard' ? renderDashboard() : renderCurrentClass();
+                        scheduleRender();
                     }
                 };
             }
@@ -853,14 +878,12 @@
             if (window.initFirebaseSync) {
                 syncHandler = await window.initFirebaseSync(roomCode, (cloudData) => {
                     if (cloudData && cloudData.classes) {
+                        const incoming = JSON.stringify(cloudData);
+                        if (incoming === lastRenderedPayload) return;
+                        lastRenderedPayload = incoming;
                         appState = cloudData;
                         ensureClassStructure();
-                        renderClassTabs();
-                        if (appState.activeTab === 'dashboard') {
-                            renderDashboard();
-                        } else {
-                            renderCurrentClass();
-                        }
+                        scheduleRender();
                     }
                 });
             }
@@ -869,7 +892,10 @@
         function pushStateToCloud() {
             if (!isAdmin) return;
 
-            // Broadcast immediately for other tabs/windows on this device.
+            const snapshot = JSON.stringify(appState);
+            if (snapshot === lastCloudPayload) return;
+            lastCloudPayload = snapshot;
+
             if (roomChannel && localSyncReady) {
                 lastLocalRevision = Date.now();
                 roomChannel.postMessage({
@@ -877,15 +903,16 @@
                     room: roomCode,
                     revision: lastLocalRevision,
                     source: window.__silatTabId,
-                    data: JSON.parse(JSON.stringify(appState))
+                    data: JSON.parse(snapshot)
                 });
             }
 
-            // Persist to Firestore when configured; onSnapshot then distributes
-            // the same state to phones, tablets and computers over the internet.
-            if (syncHandler && syncHandler.saveData) {
-                syncHandler.saveData(appState);
-            }
+            clearTimeout(cloudSaveTimer);
+            cloudSaveTimer = setTimeout(() => {
+                if (syncHandler && syncHandler.saveData) {
+                    syncHandler.saveData(JSON.parse(lastCloudPayload));
+                }
+            }, 350);
         }
 
         /* --- ADMIN & PERMISSION CONTROLLER --- */
@@ -919,7 +946,7 @@
                 else inp.removeAttribute('disabled');
             });
 
-            lucide.createIcons();
+            refreshIcons();
         }
 
         function adminActionGuard(actionFn) {
@@ -1103,7 +1130,7 @@
             document.getElementById('dashTotalClasses').innerText = appState.classes.length;
             document.getElementById('dashTotalAthletes').innerText = totalAthletes;
             document.getElementById('dashTotalMatches').innerText = totalMatches;
-            lucide.createIcons();
+            refreshIcons();
         }
 
         /* --- CURRENT CLASS MANAGEMENT --- */
@@ -1230,7 +1257,7 @@
                 </div>
             `).join('');
 
-            lucide.createIcons();
+            refreshIcons();
             updateRoleUI();
         }
 
@@ -1450,7 +1477,7 @@
                         <i data-lucide="users" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
                         <p class="font-medium text-xs">Tambahkan minimal 2 pesilat untuk membentuk bagan pertandingan kelas ini.</p>
                     </div>`;
-                lucide.createIcons();
+                refreshIcons();
                 return;
             }
 
@@ -1701,7 +1728,7 @@
             toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-4 sm:translate-x-0 bg-slate-800 text-slate-100 border border-slate-700 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl z-50 flex items-center gap-2 max-w-[90vw] truncate';
             toast.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400 shrink-0"></i> <span>${msg}</span>`;
             document.body.appendChild(toast);
-            lucide.createIcons();
+            refreshIcons();
             setTimeout(() => {
                 toast.remove();
             }, 3000);
