@@ -1,0 +1,1607 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Bagan Pertandingan Pencak Silat Real-Time (IPSI)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        silatRed: '#dc2626',
+                        silatBlue: '#2563eb',
+                        silatGold: '#eab308',
+                        silatGreen: '#059669',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .bracket-scroll::-webkit-scrollbar {
+            height: 10px;
+            width: 10px;
+        }
+        .bracket-scroll::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-radius: 8px;
+        }
+        .bracket-scroll::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 8px;
+        }
+        .bracket-scroll::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Custom Touch & Mobile Responsiveness Enhancements */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        .bracket-zoom-container {
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: top left;
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white !important; color: black !important; }
+            .match-card { background: #f8fafc !important; border: 1px solid #94a3b8 !important; color: black !important; }
+            .red-corner-bg { background-color: #fee2e2 !important; color: #991b1b !important; }
+            .blue-corner-bg { background-color: #dbeafe !important; color: #1e40af !important; }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
+
+    <!-- Header Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 shadow-md no-print sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            
+            <!-- App Logo & Title -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2.5 sm:space-x-3">
+                    <div class="p-2 sm:p-2.5 bg-gradient-to-tr from-emerald-600 via-red-600 to-blue-600 rounded-xl shadow-lg flex items-center justify-center shrink-0">
+                        <i data-lucide="swords" class="w-5 h-5 sm:w-6 sm:h-6 text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
+                            SILAT TOURNAMENT <span class="text-[9px] sm:text-[10px] bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> LIVE SYNC
+                            </span>
+                        </h1>
+                        <p class="text-[10px] sm:text-xs text-slate-400">Bagan Pertandingan Real-Time IPSI / PERSILAT</p>
+                    </div>
+                </div>
+
+                <!-- Mobile Menu Button for Quick Actions -->
+                <button onclick="toggleMobileSidebar()" class="lg:hidden p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700 flex items-center gap-1 text-xs font-semibold">
+                    <i data-lucide="sliders-horizontal" class="w-4 h-4 text-emerald-400"></i>
+                    <span id="mobileSidebarToggleText">Kelola</span>
+                </button>
+            </div>
+
+            <!-- Tournament Room & Access Control Info -->
+            <div class="flex flex-wrap items-center justify-between md:justify-end gap-2">
+                <!-- Room Badge -->
+                <div class="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5 text-xs">
+                    <span class="text-slate-400 text-[10px] sm:text-[11px]">RUANG:</span>
+                    <strong id="displayRoomCode" class="font-mono text-amber-400 tracking-wider font-extrabold text-xs sm:text-sm">—</strong>
+                    <button onclick="copyRoomLink()" title="Salin Link Real-time" class="text-slate-400 hover:text-emerald-400 p-1 transition">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="shareRoomLink()" title="Bagikan Ruang" class="sm:hidden text-slate-400 hover:text-emerald-400 p-1 transition">
+                        <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="openRoomModal()" title="Ganti / Buat Ruang" class="text-slate-400 hover:text-blue-400 p-1 transition">
+                        <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+
+                <!-- Admin vs Spectator Mode Toggle & Print -->
+                <div class="flex items-center gap-2">
+                    <div id="roleBadgeContainer" class="flex items-center">
+                        <!-- Dynamic Role Button inject -->
+                    </div>
+
+                    <button onclick="window.print()" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition">
+                        <i data-lucide="printer" class="w-3.5 h-3.5 text-emerald-400"></i> <span class="hidden sm:inline">Cetak</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Class Navigation Tab Bar (Responsive Horizontal Slider) -->
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 border-t border-slate-800/80 bg-slate-900/80 py-2 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+            <div class="flex items-center gap-1.5 overflow-x-auto py-0.5 no-scrollbar shrink-0" id="classTabsContainer">
+                <!-- Class Tabs dynamic inject -->
+            </div>
+
+            <div class="flex items-center gap-2 shrink-0 ml-auto pl-2">
+                <button onclick="switchTab('dashboard')" id="dashboardTabBtn" class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 whitespace-nowrap">
+                    <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 text-amber-400"></i> Ringkasan
+                </button>
+                <button onclick="adminActionGuard(addNewClassModal)" class="admin-only px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-sm transition flex items-center gap-1.5 whitespace-nowrap">
+                    <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> + Kelas
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 flex flex-col gap-4 sm:gap-6">
+
+        <!-- DASHBOARD VIEW (ALL CLASSES OVERVIEW) -->
+        <div id="dashboardView" class="hidden space-y-4 sm:space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                            <i data-lucide="layout-dashboard" class="w-5 h-5 text-amber-400"></i> Ringkasan Seluruh Kelas Tanding
+                        </h2>
+                        <p class="text-xs text-slate-400">Monitoring status pertandingan dan statistik peserta di semua kelas secara real-time.</p>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 sm:gap-3 text-xs font-medium shrink-0">
+                        <div class="bg-slate-950 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-slate-800 text-center sm:text-left">
+                            <span class="text-slate-400 block text-[9px] sm:text-[10px]">Total Kelas</span>
+                            <span id="dashTotalClasses" class="text-xs sm:text-sm font-bold text-amber-400">0</span>
+                        </div>
+                        <div class="bg-slate-950 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-slate-800 text-center sm:text-left">
+                            <span class="text-slate-400 block text-[9px] sm:text-[10px]">Total Pesilat</span>
+                            <span id="dashTotalAthletes" class="text-xs sm:text-sm font-bold text-blue-400">0</span>
+                        </div>
+                        <div class="bg-slate-950 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-slate-800 text-center sm:text-left">
+                            <span class="text-slate-400 block text-[9px] sm:text-[10px]">Total Partai</span>
+                            <span id="dashTotalMatches" class="text-xs sm:text-sm font-bold text-emerald-400">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pt-2" id="dashboardClassGrid">
+                    <!-- Dynamic Class Cards -->
+                </div>
+            </div>
+        </div>
+
+        <!-- SINGLE CLASS MANAGEMENT VIEW -->
+        <div id="classView" class="flex flex-col lg:flex-row gap-4 sm:gap-6">
+            
+            <!-- Left Sidebar: Configuration & Participants (Collapsible on Mobile) -->
+            <div id="mobileConfigSidebar" class="hidden lg:flex lg:w-1/3 flex-col gap-4 sm:gap-5 no-print">
+                
+                <!-- Class Settings Panel -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="settings" class="w-4 h-4 text-amber-400"></i> Konfigurasi Kelas Ini
+                        </h2>
+                        <div class="flex items-center gap-1 admin-only">
+                            <button onclick="duplicateCurrentClass()" title="Duplikat Kelas Ini" class="text-slate-400 hover:text-blue-400 p-1 rounded-lg">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="deleteCurrentClass()" title="Hapus Kelas Ini" class="text-slate-400 hover:text-red-400 p-1 rounded-lg">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2.5 text-xs">
+                        <div>
+                            <label class="block text-slate-400 mb-1 text-[11px]">Nama Label Kelas / Kategori</label>
+                            <input type="text" id="classNameInput" onchange="updateCurrentClassConfig()" 
+                                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-semibold disabled:opacity-60">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-slate-400 mb-1 text-[11px]">Gelanggang</label>
+                                <select id="gelanggangSelect" onchange="updateCurrentClassConfig()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-60">
+                                    <option value="Gelanggang 1">Gelanggang 1</option>
+                                    <option value="Gelanggang 2">Gelanggang 2</option>
+                                    <option value="Gelanggang 3">Gelanggang 3</option>
+                                    <option value="Gelanggang 4">Gelanggang 4</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1 text-[11px]">Kategori</label>
+                                <select id="categorySelect" onchange="updateCurrentClassConfig()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-60">
+                                    <option value="Tanding">Tanding</option>
+                                    <option value="Tunggal">Tunggal (Seni)</option>
+                                    <option value="Ganda">Ganda (Seni)</option>
+                                    <option value="Regu">Regu (Seni)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-slate-400 mb-1 text-[10px]">Golongan</label>
+                                <select id="ageGroupSelect" onchange="updateCurrentClassConfig()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-1.5 py-2 text-[11px] text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-60">
+                                    <option value="Usia Dini">Usia Dini</option>
+                                    <option value="Pra Remaja">Pra Remaja</option>
+                                    <option value="Remaja">Remaja</option>
+                                    <option value="Dewasa">Dewasa</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1 text-[10px]">Kelompok</label>
+                                <select id="genderSelect" onchange="updateCurrentClassConfig()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-1.5 py-2 text-[11px] text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-60">
+                                    <option value="Putra">Putra</option>
+                                    <option value="Putri">Putri</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 mb-1 text-[10px]">Kelas Berat</label>
+                                <select id="weightClassSelect" onchange="updateCurrentClassConfig()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-1.5 py-2 text-[11px] text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-60">
+                                    <option value="Kelas A (45 - 50 kg)">Kelas A</option>
+                                    <option value="Kelas B (50 - 55 kg)">Kelas B</option>
+                                    <option value="Kelas C (55 - 60 kg)">Kelas C</option>
+                                    <option value="Kelas D (60 - 65 kg)">Kelas D</option>
+                                    <option value="Kelas E (65 - 70 kg)">Kelas E</option>
+                                    <option value="Kelas F (70 - 75 kg)">Kelas F</option>
+                                    <option value="Kelas G (75 - 80 kg)">Kelas G</option>
+                                    <option value="Kelas H (80 - 85 kg)">Kelas H</option>
+                                    <option value="Kelas Bebas / Open">Bebas</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Athlete Management Panel -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-sm flex-1 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                            <i data-lucide="users" class="w-4 h-4 text-blue-400"></i> Pesilat
+                            <span id="athleteCountBadge" class="bg-slate-800 text-slate-300 text-xs px-2 py-0.5 rounded-full font-mono border border-slate-700">0</span>
+                        </h2>
+                        <button onclick="smartShuffleWithContingentProtection()" title="Acak Seeding sambil Memisahkan Kontingen Sama" class="admin-only text-[11px] bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white px-2 py-1 rounded-lg border border-indigo-500/30 transition flex items-center gap-1 font-semibold">
+                            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-indigo-400"></i> Proteksi Kontingen
+                        </button>
+                    </div>
+
+                    <!-- Form Add Single Athlete -->
+                    <form onsubmit="handleAddAthlete(event)" class="space-y-2 mb-3 admin-only">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input type="text" id="athleteNameInput" placeholder="Nama Pesilat..." required
+                                class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-red-500">
+                            <input type="text" id="contingentInput" placeholder="Kontingen / Perguruan..." required
+                                class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-red-500">
+                        </div>
+                        <button type="submit" class="w-full bg-red-600 hover:bg-red-500 text-white text-xs py-2 rounded-lg font-semibold transition flex items-center justify-center gap-1">
+                            <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> Tambah Pesilat
+                        </button>
+                    </form>
+
+                    <!-- Bulk Input Area Toggle -->
+                    <div class="mb-3 admin-only">
+                        <button onclick="toggleBulkAdd()" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 font-medium">
+                            <i data-lucide="file-text" class="w-3.5 h-3.5"></i> + Input Banyak Pesilat (Bulk)
+                        </button>
+                        <div id="bulkContainer" class="hidden mt-2 space-y-2">
+                            <textarea id="bulkTextInput" rows="3" placeholder="Format: Nama, Kontingen&#10;Contoh:&#10;Ahmad Fauzi, PSHT&#10;Budi Santoso, Tapak Suci" 
+                                class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-red-500"></textarea>
+                            <button onclick="handleBulkAdd()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-1.5 rounded-lg font-semibold transition">
+                                Proses Bulk Pesilat
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Athletes List Display -->
+                    <div id="athleteList" class="flex-1 overflow-y-auto max-h-48 sm:max-h-56 border border-slate-800 rounded-lg divide-y divide-slate-800/60 bg-slate-950">
+                        <!-- Dynamic Athlete Row -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Area: Interactive Bracket / Schedule List -->
+            <div class="w-full lg:w-2/3 flex flex-col gap-4 sm:gap-5 min-w-0">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-5 flex-1 flex flex-col shadow-sm min-w-0">
+                    
+                    <!-- Class View Header Banner & Bracket View Controls -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-slate-800">
+                        <div class="min-w-0">
+                            <h2 id="dispClassName" class="text-sm sm:text-base font-extrabold text-white truncate">Dewasa Tanding - Kelas C Putra</h2>
+                            <p id="dispClassSubtitle" class="text-[11px] sm:text-xs text-slate-400 mt-0.5 truncate">
+                                Gelanggang 1 | Kategori Tanding - Dewasa - Putra - Kelas C (55 - 60 kg)
+                            </p>
+                        </div>
+
+                        <!-- Mode Switch & Bracket Zoom Controls -->
+                        <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                            <!-- Viewport Zoom Controls for Mobile -->
+                            <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                                <button onclick="adjustBracketZoom(-0.1)" title="Zoom Out" class="px-2 py-1 text-slate-400 hover:text-white transition">
+                                    <i data-lucide="zoom-out" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <span id="zoomLevelLabel" class="text-[10px] font-mono text-slate-400 px-1">100%</span>
+                                <button onclick="adjustBracketZoom(0.1)" title="Zoom In" class="px-2 py-1 text-slate-400 hover:text-white transition">
+                                    <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button onclick="resetBracketZoom()" title="Reset Zoom" class="px-1.5 py-1 text-slate-500 hover:text-amber-400 transition">
+                                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+
+                            <!-- Mode Switch View (Bagan vs List) -->
+                            <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                <button onclick="setBracketDisplayMode('bracket')" id="btnViewBracket" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow transition flex items-center gap-1">
+                                    <i data-lucide="git-fork" class="w-3.5 h-3.5"></i> <span class="hidden sm:inline">Bagan</span> Visual
+                                </button>
+                                <button onclick="setBracketDisplayMode('list')" id="btnViewList" class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center gap-1">
+                                    <i data-lucide="list-ordered" class="w-3.5 h-3.5"></i> Jadwal <span class="hidden sm:inline">Partai</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bracket Canvas Scroll Area -->
+                    <div id="bracketContainer" class="flex-1 overflow-x-auto bracket-scroll py-4 sm:py-6 bg-slate-950 rounded-xl border border-slate-800/80 mt-3 sm:mt-4 flex items-center justify-start min-h-[380px] sm:min-h-[420px] px-3 sm:px-4 relative">
+                        <div id="bracketView" class="bracket-zoom-container w-full">
+                            <!-- Dynamic Bracket Render -->
+                        </div>
+                    </div>
+
+                    <!-- Medal Summary (Juara 3 Bersama) -->
+                    <div id="podiumSection" class="mt-4 pt-4 border-t border-slate-800">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                            <i data-lucide="award" class="w-4 h-4 text-amber-400"></i> Rekapitulasi Perolehan Medali (Juara 3 Bersama)
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                            <!-- Juara 1 -->
+                            <div class="bg-slate-950 border border-amber-500/30 rounded-xl p-2.5 sm:p-3 flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center font-bold text-sm shrink-0">
+                                    🥇
+                                </div>
+                                <div class="min-w-0">
+                                    <span class="text-[9px] sm:text-[10px] uppercase font-bold text-amber-400 tracking-wider">Juara 1 (Emas)</span>
+                                    <h4 id="goldWinner" class="text-xs font-bold text-slate-200 truncate">—</h4>
+                                    <p id="goldContingent" class="text-[10px] text-slate-500 truncate">—</p>
+                                </div>
+                            </div>
+
+                            <!-- Juara 2 -->
+                            <div class="bg-slate-950 border border-slate-400/30 rounded-xl p-2.5 sm:p-3 flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-slate-400/20 text-slate-300 border border-slate-400/40 flex items-center justify-center font-bold text-sm shrink-0">
+                                    🥈
+                                </div>
+                                <div class="min-w-0">
+                                    <span class="text-[9px] sm:text-[10px] uppercase font-bold text-slate-300 tracking-wider">Juara 2 (Perak)</span>
+                                    <h4 id="silverWinner" class="text-xs font-bold text-slate-200 truncate">—</h4>
+                                    <p id="silverContingent" class="text-[10px] text-slate-500 truncate">—</p>
+                                </div>
+                            </div>
+
+                            <!-- Juara 3 Bersama -->
+                            <div class="bg-slate-950 border border-amber-700/30 rounded-xl p-2.5 sm:p-3 flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-amber-700/20 text-amber-600 border border-amber-700/40 flex items-center justify-center font-bold text-sm shrink-0">
+                                    🥉
+                                </div>
+                                <div class="min-w-0">
+                                    <span class="text-[9px] sm:text-[10px] uppercase font-bold text-amber-600 tracking-wider">Juara 3 Bersama (Perunggu)</span>
+                                    <h4 id="bronzeWinners" class="text-xs font-bold text-slate-200 truncate">—</h4>
+                                    <p id="bronzeContingents" class="text-[10px] text-slate-500 truncate">—</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Input Match Decision (Responsive Fullscreen / Centered) -->
+    <div id="matchModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 hidden no-print">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-3 sm:space-y-4 max-h-[90vh] overflow-y-auto">
+            
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                        <i data-lucide="gavel" class="w-4 h-4 text-red-500"></i> Keputusan Partai Tanding
+                    </h3>
+                    <p id="modalPartaiNum" class="text-[11px] sm:text-xs text-slate-400">Partai #1 - Babak Penyisihan</p>
+                </div>
+                <button onclick="closeMatchModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="matchForm" onsubmit="saveMatchDecision(event)" class="space-y-3 sm:space-y-4">
+                <input type="hidden" id="modalMatchId">
+
+                <div class="space-y-2">
+                    <label class="block text-xs font-semibold text-slate-300">Pilih Pemenang Partai:</label>
+
+                    <!-- Sudut Merah Radio -->
+                    <label class="flex items-center justify-between p-2.5 sm:p-3 rounded-xl border border-red-900/40 bg-red-950/30 hover:bg-red-900/20 cursor-pointer transition">
+                        <div class="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+                            <input type="radio" name="winnerSelection" value="red" id="radioRed" class="accent-red-600 w-4 h-4 shrink-0">
+                            <div class="min-w-0">
+                                <span id="modalRedName" class="text-xs font-bold text-red-400 block truncate">Pesilat Merah</span>
+                                <span id="modalRedContingent" class="text-[10px] text-slate-500 block truncate">Kontingen</span>
+                            </div>
+                        </div>
+                        <span class="text-[9px] sm:text-[10px] font-bold text-red-500 uppercase bg-red-950 px-2 py-0.5 rounded border border-red-800 shrink-0">Sudut Merah</span>
+                    </label>
+
+                    <!-- Sudut Biru Radio -->
+                    <label class="flex items-center justify-between p-2.5 sm:p-3 rounded-xl border border-blue-900/40 bg-blue-950/30 hover:bg-blue-900/20 cursor-pointer transition">
+                        <div class="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+                            <input type="radio" name="winnerSelection" value="blue" id="radioBlue" class="accent-blue-600 w-4 h-4 shrink-0">
+                            <div class="min-w-0">
+                                <span id="modalBlueName" class="text-xs font-bold text-blue-400 block truncate">Pesilat Biru</span>
+                                <span id="modalBlueContingent" class="text-[10px] text-slate-500 block truncate">Kontingen</span>
+                            </div>
+                        </div>
+                        <span class="text-[9px] sm:text-[10px] font-bold text-blue-500 uppercase bg-blue-950 px-2 py-0.5 rounded border border-blue-800 shrink-0">Sudut Biru</span>
+                    </label>
+                </div>
+
+                <!-- Input Skor Poin -->
+                <div class="grid grid-cols-2 gap-2.5 pt-1">
+                    <div>
+                        <label class="block text-[11px] text-red-400 font-semibold mb-1">Skor Sudut Merah</label>
+                        <input type="number" min="0" id="modalRedScore" placeholder="0" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs font-bold text-white text-center focus:outline-none focus:border-red-500">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] text-blue-400 font-semibold mb-1">Skor Sudut Biru</label>
+                        <input type="number" min="0" id="modalBlueScore" placeholder="0" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs font-bold text-white text-center focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <!-- Decision Type Specific to IPSI -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Jenis Kemenangan (Regulasi IPSI):</label>
+                    <select id="modalDecisionType" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                        <option value="Angka">Kemenangan Angka (Points)</option>
+                        <option value="Teknik">Kemenangan Teknik (Cedera / Lempar Handuk)</option>
+                        <option value="Mutlak">Kemenangan Mutlak (Jatuhan / Knockout)</option>
+                        <option value="Diskualifikasi">Kemenangan Diskualifikasi (Pelanggaran)</option>
+                        <option value="W.O.">Kemenangan W.O. (Walk Over)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                    <button type="button" onclick="closeMatchModal()" class="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition">Batal</button>
+                    <button type="submit" class="px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-md">Simpan Pemenang</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Create New Class -->
+    <div id="addClassModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden no-print">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i data-lucide="plus-circle" class="w-4 h-4 text-emerald-400"></i> Tambah Kelas Tanding Baru
+                </h3>
+                <button onclick="closeAddClassModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Nama Kelas / Kategori</label>
+                    <input type="text" id="newClassName" placeholder="misal: Remaja Tanding - Kelas A Putra" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button onclick="closeAddClassModal()" class="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200">Batal</button>
+                <button onclick="confirmCreateNewClass()" class="px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg">Buat Kelas</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Admin PIN Login -->
+    <div id="adminPinModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden no-print">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xs w-full p-6 shadow-2xl space-y-4 text-center">
+            <div class="w-12 h-12 bg-red-600/20 text-red-500 rounded-full flex items-center justify-center mx-auto border border-red-500/30">
+                <i data-lucide="lock" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h3 class="text-sm font-bold text-white">Akses Mode Panitia / Wasit</h3>
+                <p class="text-xs text-slate-400 mt-1">Masukkan PIN untuk mendapatkan hak akses edit bagan.</p>
+            </div>
+
+            <input type="password" id="pinInput" placeholder="PIN (Default: 1234)" maxlength="8"
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-center text-lg tracking-widest font-mono text-white focus:outline-none focus:border-red-500">
+
+            <div class="flex gap-2 pt-2">
+                <button onclick="closePinModal()" class="w-1/2 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200">Batal</button>
+                <button onclick="verifyAdminPin()" class="w-1/2 py-2 text-xs font-semibold bg-red-600 hover:bg-red-500 text-white rounded-xl shadow-md">Login Panitia</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Select/Create Room Code -->
+    <div id="roomModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden no-print">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i data-lucide="radio" class="w-4 h-4 text-emerald-400"></i> Ruang Turnamen Real-time
+                </h3>
+                <button onclick="closeRoomModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Masukkan Kode Turnamen / Ruang</label>
+                    <input type="text" id="targetRoomCodeInput" placeholder="Contoh: SILAT-IPSI" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white uppercase font-mono tracking-wider focus:outline-none focus:border-emerald-500">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2 pt-2">
+                <button onclick="joinRoomFromInput()" class="w-full py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-md">
+                    Gabung Ruang Ini
+                </button>
+                <button onclick="createNewRandomRoom()" class="w-full py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg">
+                    Buat Ruang Turnamen Acak Baru
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Standard SDK Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Environment variables or defaults
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'silat-tournament-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "demo-api-key",
+            authDomain: "demo-project.firebaseapp.com",
+            projectId: "demo-project",
+            storageBucket: "demo-project.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:abcdef"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.firebaseApp = app;
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.appIdEnv = appId;
+
+        // Initialize Authentication first
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Auth initialization fallback:", err);
+            }
+        }
+
+        window.initFirebaseSync = async function(roomCode, onDataReceived) {
+            await initAuth();
+
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', roomCode);
+            
+            // Real-time listener
+            const unsubscribe = onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    onDataReceived(docSnap.data());
+                } else {
+                    // Initialize empty tournament structure
+                    const initialData = getInitialAppState();
+                    setDoc(docRef, initialData);
+                }
+            }, (error) => {
+                console.error("Firestore sync error:", error);
+            });
+
+            return {
+                saveData: async (data) => {
+                    if (!auth.currentUser) return;
+                    try {
+                        await setDoc(docRef, data);
+                    } catch (err) {
+                        console.error("Save error:", err);
+                    }
+                },
+                unsubscribe
+            };
+        };
+    </script>
+
+    <script>
+        // Global App Architecture
+        let roomCode = getUrlRoomCode() || "SILAT-MAIN";
+        let isAdmin = false;
+        let adminPin = "1234";
+        let syncHandler = null;
+        let currentZoom = 1.0;
+
+        let appState = getInitialAppState();
+        let bracketDisplayMode = 'bracket'; // 'bracket' or 'list'
+
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('mobileConfigSidebar');
+            const toggleText = document.getElementById('mobileSidebarToggleText');
+            if (sidebar.classList.contains('hidden')) {
+                sidebar.classList.remove('hidden');
+                toggleText.innerText = "Bagan";
+            } else {
+                sidebar.classList.add('hidden');
+                toggleText.innerText = "Kelola";
+            }
+        }
+
+        function adjustBracketZoom(delta) {
+            currentZoom = Math.min(Math.max(0.6, currentZoom + delta), 1.5);
+            applyBracketZoom();
+        }
+
+        function resetBracketZoom() {
+            currentZoom = 1.0;
+            applyBracketZoom();
+        }
+
+        function applyBracketZoom() {
+            const container = document.getElementById('bracketView');
+            const label = document.getElementById('zoomLevelLabel');
+            if (container) {
+                container.style.transform = `scale(${currentZoom})`;
+                container.style.width = `${100 / currentZoom}%`;
+            }
+            if (label) {
+                label.innerText = `${Math.round(currentZoom * 100)}%`;
+            }
+        }
+
+        function shareRoomLink() {
+            const link = window.location.href;
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Bagan Pertandingan Pencak Silat Realtime',
+                    text: `Pantau Bagan & Skor Real-Time Turnamen Pencak Silat (Kode Ruang: ${roomCode})`,
+                    url: link
+                }).catch(() => {
+                    copyRoomLink();
+                });
+            } else {
+                copyRoomLink();
+            }
+        }
+
+        function getInitialAppState() {
+            return {
+                activeTab: 'class',
+                currentClassId: 'class_1',
+                classes: [
+                    {
+                        id: 'class_1',
+                        name: 'Dewasa Tanding - Kelas C Putra',
+                        config: {
+                            gelanggang: "Gelanggang 1",
+                            category: "Tanding",
+                            ageGroup: "Dewasa",
+                            gender: "Putra",
+                            weightClass: "Kelas C (55 - 60 kg)"
+                        },
+                        athletes: [
+                            { id: 1, name: "Ahmad Fauzi", contingent: "PSHT" },
+                            { id: 2, name: "Budi Santoso", contingent: "Tapak Suci" },
+                            { id: 3, name: "Cahyo Utomo", contingent: "Perisai Diri" },
+                            { id: 4, name: "Deni Prasetyo", contingent: "Pagar Nusa" }
+                        ],
+                        matches: []
+                    }
+                ]
+            };
+        }
+
+        function getUrlRoomCode() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                return params.get('room');
+            } catch (e) {
+                return null;
+            }
+        }
+
+        window.onload = function() {
+            document.getElementById('displayRoomCode').innerText = roomCode;
+            updateRoleUI();
+            connectRoomSync(roomCode);
+            lucide.createIcons();
+        };
+
+        /* --- REAL-TIME CLOUD SYNC CONTROLLER --- */
+
+        async function connectRoomSync(targetRoom) {
+            roomCode = targetRoom.toUpperCase();
+            document.getElementById('displayRoomCode').innerText = roomCode;
+
+            // Safely update URL search params without crashing in blob or sandboxed environments
+            try {
+                if (window.location.protocol !== 'blob:' && window.history && window.history.replaceState) {
+                    const newUrl = `${window.location.pathname}?room=${roomCode}`;
+                    window.history.replaceState({ path: newUrl }, '', newUrl);
+                }
+            } catch (err) {
+                console.warn("Unable to update browser history in this environment:", err);
+            }
+
+            if (syncHandler && syncHandler.unsubscribe) {
+                syncHandler.unsubscribe();
+            }
+
+            if (window.initFirebaseSync) {
+                syncHandler = await window.initFirebaseSync(roomCode, (cloudData) => {
+                    if (cloudData && cloudData.classes) {
+                        appState = cloudData;
+                        ensureClassStructure();
+                        renderClassTabs();
+                        if (appState.activeTab === 'dashboard') {
+                            renderDashboard();
+                        } else {
+                            renderCurrentClass();
+                        }
+                    }
+                });
+            }
+        }
+
+        function pushStateToCloud() {
+            if (syncHandler && syncHandler.saveData && isAdmin) {
+                syncHandler.saveData(appState);
+            }
+        }
+
+        /* --- ADMIN & PERMISSION CONTROLLER --- */
+
+        function updateRoleUI() {
+            const container = document.getElementById('roleBadgeContainer');
+            if (isAdmin) {
+                container.innerHTML = `
+                    <button onclick="logoutAdmin()" class="px-3 py-1.5 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 text-xs font-semibold hover:bg-red-600 hover:text-white transition flex items-center gap-1">
+                        <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Mode Panitia (Aktif)
+                    </button>
+                `;
+            } else {
+                container.innerHTML = `
+                    <button onclick="openPinModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition flex items-center gap-1">
+                        <i data-lucide="eye" class="w-3.5 h-3.5 text-blue-400"></i> Penonton (Live Read-Only)
+                    </button>
+                `;
+            }
+
+            // Toggle admin-only inputs and controls visibility
+            document.querySelectorAll('.admin-only').forEach(el => {
+                if (isAdmin) el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            });
+
+            // Disable forms for non-admins
+            const inputs = document.querySelectorAll('#classView input, #classView select');
+            inputs.forEach(inp => {
+                if (!isAdmin) inp.setAttribute('disabled', 'disabled');
+                else inp.removeAttribute('disabled');
+            });
+
+            lucide.createIcons();
+        }
+
+        function adminActionGuard(actionFn) {
+            if (!isAdmin) {
+                openPinModal();
+                return;
+            }
+            actionFn();
+        }
+
+        function openPinModal() {
+            document.getElementById('pinInput').value = '';
+            document.getElementById('adminPinModal').classList.remove('hidden');
+        }
+
+        function closePinModal() {
+            document.getElementById('adminPinModal').classList.add('hidden');
+        }
+
+        function verifyAdminPin() {
+            const input = document.getElementById('pinInput').value;
+            if (input === adminPin || input === '1234') {
+                isAdmin = true;
+                closePinModal();
+                updateRoleUI();
+                showNotification("Akses Panitia Berhasil Diberikan!");
+            } else {
+                alert("PIN Salah! Default PIN adalah 1234.");
+            }
+        }
+
+        function logoutAdmin() {
+            isAdmin = false;
+            updateRoleUI();
+            showNotification("Kembali ke Mode Penonton.");
+        }
+
+        /* --- ROOM SELECTION MODAL --- */
+
+        function openRoomModal() {
+            document.getElementById('targetRoomCodeInput').value = roomCode;
+            document.getElementById('roomModal').classList.remove('hidden');
+        }
+
+        function closeRoomModal() {
+            document.getElementById('roomModal').classList.add('hidden');
+        }
+
+        function joinRoomFromInput() {
+            const val = document.getElementById('targetRoomCodeInput').value.trim();
+            if (val) {
+                connectRoomSync(val);
+                closeRoomModal();
+            }
+        }
+
+        function createNewRandomRoom() {
+            const randomCode = 'SILAT-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+            connectRoomSync(randomCode);
+            closeRoomModal();
+        }
+
+        function copyRoomLink() {
+            const link = window.location.href;
+            const tempInput = document.createElement('input');
+            tempInput.value = link;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            showNotification("Link Real-time berhasil disalin!");
+        }
+
+        /* --- CLASS SELECTION & NAVIGATION --- */
+
+        function getCurrentClass() {
+            return appState.classes.find(c => c.id === appState.currentClassId) || appState.classes[0];
+        }
+
+        function ensureClassStructure() {
+            if (!appState.classes) appState.classes = [];
+            appState.classes.forEach(c => {
+                if (!c.matches || c.matches.length === 0) {
+                    generateMatchBracketForClass(c);
+                }
+            });
+        }
+
+        function renderClassTabs() {
+            const container = document.getElementById('classTabsContainer');
+            if (!container) return;
+
+            container.innerHTML = appState.classes.map(c => {
+                const isActive = appState.activeTab === 'class' && c.id === appState.currentClassId;
+                return `
+                    <button onclick="switchToClass('${c.id}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition flex items-center gap-2 border ${isActive ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'}">
+                        <span>${escapeHtml(c.name)}</span>
+                        <span class="text-[10px] px-1.5 py-0.2 bg-slate-900/80 rounded font-mono text-slate-300 border border-slate-700">${c.athletes ? c.athletes.length : 0} Pesilat</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function switchToClass(classId) {
+            appState.activeTab = 'class';
+            appState.currentClassId = classId;
+            renderClassTabs();
+            
+            document.getElementById('dashboardTabBtn').className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800 transition flex items-center gap-1.5";
+            document.getElementById('dashboardView').classList.add('hidden');
+            document.getElementById('classView').classList.remove('hidden');
+
+            renderCurrentClass();
+        }
+
+        function switchTab(tabName) {
+            if (tabName === 'dashboard') {
+                appState.activeTab = 'dashboard';
+                renderClassTabs();
+
+                document.getElementById('dashboardTabBtn').className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white border border-emerald-500 shadow transition flex items-center gap-1.5";
+                document.getElementById('classView').classList.add('hidden');
+                document.getElementById('dashboardView').classList.remove('hidden');
+
+                renderDashboard();
+            }
+        }
+
+        /* --- DASHBOARD RENDER --- */
+
+        function renderDashboard() {
+            const grid = document.getElementById('dashboardClassGrid');
+            let totalAthletes = 0;
+            let totalMatches = 0;
+
+            let html = appState.classes.map(c => {
+                const athCount = c.athletes ? c.athletes.length : 0;
+                const matchCount = c.matches ? c.matches.length : 0;
+                totalAthletes += athCount;
+                totalMatches += matchCount;
+
+                const completedMatches = c.matches ? c.matches.filter(m => m.winner !== null).length : 0;
+                const progressPct = matchCount > 0 ? Math.round((completedMatches / matchCount) * 100) : 0;
+
+                const totalRounds = Math.log2(getNextPowerOfTwo(athCount));
+                const finalMatch = c.matches ? c.matches.find(m => m.round === totalRounds) : null;
+                const gold = finalMatch && finalMatch.winner ? finalMatch.winner.name : "Belum Selesai";
+
+                return `
+                    <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3">
+                        <div>
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">${escapeHtml(c.config.gelanggang)}</span>
+                                <span class="text-[10px] text-slate-500 font-mono">${athCount} Pesilat</span>
+                            </div>
+                            <h3 class="text-sm font-bold text-white truncate">${escapeHtml(c.name)}</h3>
+                            <p class="text-xs text-slate-400 truncate">${escapeHtml(c.config.category)} - ${escapeHtml(c.config.ageGroup)} - ${escapeHtml(c.config.gender)} (${escapeHtml(c.config.weightClass)})</p>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between text-[11px]">
+                                <span class="text-slate-400">Progress Tanding</span>
+                                <span class="font-bold font-mono text-emerald-400">${progressPct}%</span>
+                            </div>
+                            <div class="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                                <div class="bg-emerald-500 h-1.5 rounded-full" style="width: ${progressPct}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-slate-900 flex items-center justify-between text-xs">
+                            <span class="text-slate-400 text-[10px]">Juara 1: <strong class="text-amber-400">${escapeHtml(gold)}</strong></span>
+                            <button onclick="switchToClass('${c.id}')" class="text-xs text-emerald-400 hover:underline font-semibold flex items-center gap-1">
+                                Buka Bagan <i data-lucide="arrow-right" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            grid.innerHTML = html;
+            document.getElementById('dashTotalClasses').innerText = appState.classes.length;
+            document.getElementById('dashTotalAthletes').innerText = totalAthletes;
+            document.getElementById('dashTotalMatches').innerText = totalMatches;
+            lucide.createIcons();
+        }
+
+        /* --- CURRENT CLASS MANAGEMENT --- */
+
+        function renderCurrentClass() {
+            const current = getCurrentClass();
+            if (!current) return;
+
+            document.getElementById('classNameInput').value = current.name;
+            document.getElementById('gelanggangSelect').value = current.config.gelanggang;
+            document.getElementById('categorySelect').value = current.config.category;
+            document.getElementById('ageGroupSelect').value = current.config.ageGroup;
+            document.getElementById('genderSelect').value = current.config.gender;
+            document.getElementById('weightClassSelect').value = current.config.weightClass;
+
+            document.getElementById('dispClassName').innerText = current.name;
+            document.getElementById('dispClassSubtitle').innerText = `${current.config.gelanggang} | ${current.config.category} - ${current.config.ageGroup} - ${current.config.gender} - ${current.config.weightClass}`;
+
+            renderAthleteList();
+            renderBracket();
+            renderPodium();
+            updateRoleUI();
+        }
+
+        function updateCurrentClassConfig() {
+            if (!isAdmin) return;
+            const current = getCurrentClass();
+            if (!current) return;
+
+            current.name = document.getElementById('classNameInput').value;
+            current.config.gelanggang = document.getElementById('gelanggangSelect').value;
+            current.config.category = document.getElementById('categorySelect').value;
+            current.config.ageGroup = document.getElementById('ageGroupSelect').value;
+            current.config.gender = document.getElementById('genderSelect').value;
+            current.config.weightClass = document.getElementById('weightClassSelect').value;
+
+            renderClassTabs();
+            renderCurrentClass();
+            pushStateToCloud();
+        }
+
+        function addNewClassModal() {
+            document.getElementById('newClassName').value = `Kelas Tanding Baru ${appState.classes.length + 1}`;
+            document.getElementById('addClassModal').classList.remove('hidden');
+        }
+
+        function closeAddClassModal() {
+            document.getElementById('addClassModal').classList.add('hidden');
+        }
+
+        function confirmCreateNewClass() {
+            if (!isAdmin) return;
+            const name = document.getElementById('newClassName').value.trim() || "Kelas Tanding Baru";
+            const newId = `class_${Date.now()}`;
+
+            const newClassObj = {
+                id: newId,
+                name: name,
+                config: {
+                    gelanggang: "Gelanggang 1",
+                    category: "Tanding",
+                    ageGroup: "Dewasa",
+                    gender: "Putra",
+                    weightClass: "Kelas C (55 - 60 kg)"
+                },
+                athletes: [],
+                matches: []
+            };
+
+            appState.classes.push(newClassObj);
+            closeAddClassModal();
+            switchToClass(newId);
+            pushStateToCloud();
+        }
+
+        function duplicateCurrentClass() {
+            if (!isAdmin) return;
+            const current = getCurrentClass();
+            const duplicated = JSON.parse(JSON.stringify(current));
+            duplicated.id = `class_${Date.now()}`;
+            duplicated.name = `${current.name} (Salinan)`;
+            appState.classes.push(duplicated);
+            switchToClass(duplicated.id);
+            pushStateToCloud();
+        }
+
+        function deleteCurrentClass() {
+            if (!isAdmin) return;
+            if (appState.classes.length <= 1) {
+                alert("Anda tidak bisa menghapus satu-satunya kelas tanding.");
+                return;
+            }
+            if (confirm(`Apakah Anda yakin ingin menghapus kelas "${getCurrentClass().name}"?`)) {
+                appState.classes = appState.classes.filter(c => c.id !== appState.currentClassId);
+                switchToClass(appState.classes[0].id);
+                pushStateToCloud();
+            }
+        }
+
+        /* --- ATHLETE MANAGEMENT --- */
+
+        function renderAthleteList() {
+            const current = getCurrentClass();
+            const container = document.getElementById('athleteList');
+            document.getElementById('athleteCountBadge').innerText = current.athletes ? current.athletes.length : 0;
+
+            if (!current.athletes || current.athletes.length === 0) {
+                container.innerHTML = `<div class="p-4 text-center text-slate-500 text-xs">Belum ada pesilat terdaftar di kelas ini.</div>`;
+                return;
+            }
+
+            container.innerHTML = current.athletes.map((a, idx) => `
+                <div class="flex items-center justify-between p-2 hover:bg-slate-900 transition text-xs">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-slate-500 font-mono w-5">${idx + 1}.</span>
+                        <div class="truncate">
+                            <span class="font-bold text-slate-200 block truncate">${escapeHtml(a.name)}</span>
+                            <span class="text-[10px] text-slate-400 block truncate">${escapeHtml(a.contingent)}</span>
+                        </div>
+                    </div>
+                    <button onclick="removeAthlete(${a.id})" class="admin-only text-slate-500 hover:text-red-400 p-1 transition">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            lucide.createIcons();
+            updateRoleUI();
+        }
+
+        function handleAddAthlete(e) {
+            e.preventDefault();
+            if (!isAdmin) return;
+            const current = getCurrentClass();
+            const nameInput = document.getElementById('athleteNameInput');
+            const contInput = document.getElementById('contingentInput');
+
+            if (nameInput.value.trim() && contInput.value.trim()) {
+                if (!current.athletes) current.athletes = [];
+                current.athletes.push({
+                    id: Date.now(),
+                    name: nameInput.value.trim(),
+                    contingent: contInput.value.trim()
+                });
+
+                nameInput.value = '';
+                contInput.value = '';
+                current.matches = [];
+                generateMatchBracketForClass(current);
+                renderCurrentClass();
+                pushStateToCloud();
+            }
+        }
+
+        function toggleBulkAdd() {
+            document.getElementById('bulkContainer').classList.toggle('hidden');
+        }
+
+        function handleBulkAdd() {
+            if (!isAdmin) return;
+            const current = getCurrentClass();
+            const rawText = document.getElementById('bulkTextInput').value;
+            const lines = rawText.split('\n').filter(l => l.trim().length > 0);
+
+            if (!current.athletes) current.athletes = [];
+
+            lines.forEach(line => {
+                const parts = line.split(',');
+                if (parts.length >= 2) {
+                    current.athletes.push({
+                        id: Date.now() + Math.random(),
+                        name: parts[0].trim(),
+                        contingent: parts[1].trim()
+                    });
+                } else if (parts.length === 1) {
+                    current.athletes.push({
+                        id: Date.now() + Math.random(),
+                        name: parts[0].trim(),
+                        contingent: "Independen"
+                    });
+                }
+            });
+
+            document.getElementById('bulkTextInput').value = '';
+            toggleBulkAdd();
+            current.matches = [];
+            generateMatchBracketForClass(current);
+            renderCurrentClass();
+            pushStateToCloud();
+        }
+
+        function removeAthlete(id) {
+            if (!isAdmin) return;
+            const current = getCurrentClass();
+            current.athletes = current.athletes.filter(a => a.id !== id);
+            current.matches = [];
+            generateMatchBracketForClass(current);
+            renderCurrentClass();
+            pushStateToCloud();
+        }
+
+        function smartShuffleWithContingentProtection() {
+            if (!isAdmin) return;
+            const current = getCurrentClass();
+            if (!current.athletes || current.athletes.length < 2) return;
+
+            let list = [...current.athletes];
+            let groups = {};
+            list.forEach(a => {
+                if (!groups[a.contingent]) groups[a.contingent] = [];
+                groups[a.contingent].push(a);
+            });
+
+            let shuffled = [];
+            let keys = Object.keys(groups);
+            keys.sort(() => Math.random() - 0.5);
+
+            let maxLen = Math.max(...Object.values(groups).map(g => g.length));
+            for (let i = 0; i < maxLen; i++) {
+                keys.forEach(key => {
+                    if (groups[key][i]) {
+                        shuffled.push(groups[key][i]);
+                    }
+                });
+            }
+
+            current.athletes = shuffled;
+            current.matches = [];
+            generateMatchBracketForClass(current);
+            renderCurrentClass();
+            pushStateToCloud();
+        }
+
+        /* --- BRACKET GENERATION ENGINE --- */
+
+        function getNextPowerOfTwo(n) {
+            let p = 1;
+            while (p < n) p *= 2;
+            return p;
+        }
+
+        function generateMatchBracketForClass(classObj) {
+            const numA = classObj.athletes ? classObj.athletes.length : 0;
+            if (numA < 2) {
+                classObj.matches = [];
+                return;
+            }
+
+            const bracketSize = getNextPowerOfTwo(numA);
+            const totalRounds = Math.log2(bracketSize);
+
+            classObj.matches = [];
+            let partaiCounter = 1;
+
+            let round1Matches = [];
+            for (let i = 0; i < bracketSize / 2; i++) {
+                const p1 = classObj.athletes[i * 2] || null;
+                const p2 = classObj.athletes[i * 2 + 1] || null;
+
+                let m = {
+                    id: `R1-M${i + 1}`,
+                    partaiNum: partaiCounter++,
+                    round: 1,
+                    matchNum: i + 1,
+                    red: p1,
+                    blue: p2,
+                    scoreRed: p1 && !p2 ? 0 : null,
+                    scoreBlue: !p1 && p2 ? 0 : null,
+                    winner: p1 && !p2 ? p1 : (!p1 && p2 ? p2 : null),
+                    decisionType: p1 && !p2 ? "BYE" : (!p1 && p2 ? "BYE" : null)
+                };
+
+                round1Matches.push(m);
+            }
+            classObj.matches.push(...round1Matches);
+
+            let prevMatches = round1Matches;
+            for (let r = 2; r <= totalRounds; r++) {
+                let nextMatches = [];
+                const count = prevMatches.length / 2;
+                for (let i = 0; i < count; i++) {
+                    nextMatches.push({
+                        id: `R${r}-M${i + 1}`,
+                        partaiNum: partaiCounter++,
+                        round: r,
+                        matchNum: i + 1,
+                        red: null,
+                        blue: null,
+                        scoreRed: null,
+                        scoreBlue: null,
+                        winner: null,
+                        decisionType: null
+                    });
+                }
+                classObj.matches.push(...nextMatches);
+                prevMatches = nextMatches;
+            }
+
+            propagateWinnersForClass(classObj);
+        }
+
+        function propagateWinnersForClass(classObj) {
+            if (!classObj.athletes) return;
+            const totalRounds = Math.log2(getNextPowerOfTwo(classObj.athletes.length));
+
+            for (let r = 1; r < totalRounds; r++) {
+                const currentRound = classObj.matches.filter(m => m.round === r);
+                for (let i = 0; i < currentRound.length; i += 2) {
+                    const m1 = currentRound[i];
+                    const m2 = currentRound[i + 1];
+                    const nextMatch = classObj.matches.find(m => m.round === r + 1 && m.matchNum === Math.floor(i / 2) + 1);
+
+                    if (nextMatch) {
+                        nextMatch.red = m1 ? m1.winner : null;
+                        nextMatch.blue = m2 ? m2.winner : null;
+
+                        if (nextMatch.winner && nextMatch.winner !== nextMatch.red && nextMatch.winner !== nextMatch.blue) {
+                            nextMatch.winner = null;
+                            nextMatch.scoreRed = null;
+                            nextMatch.scoreBlue = null;
+                            nextMatch.decisionType = null;
+                        }
+                    }
+                }
+            }
+        }
+
+        /* --- BRACKET VISUAL & LIST RENDER --- */
+
+        function setBracketDisplayMode(mode) {
+            bracketDisplayMode = mode;
+            document.getElementById('btnViewBracket').className = mode === 'bracket' ? "px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow transition flex items-center gap-1" : "px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center gap-1";
+            document.getElementById('btnViewList').className = mode === 'list' ? "px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow transition flex items-center gap-1" : "px-3 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition flex items-center gap-1";
+            renderBracket();
+        }
+
+        function renderBracket() {
+            const current = getCurrentClass();
+            const container = document.getElementById('bracketView');
+
+            if (!current || !current.athletes || current.athletes.length < 2) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-slate-500">
+                        <i data-lucide="users" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
+                        <p class="font-medium text-xs">Tambahkan minimal 2 pesilat untuk membentuk bagan pertandingan kelas ini.</p>
+                    </div>`;
+                lucide.createIcons();
+                return;
+            }
+
+            if (bracketDisplayMode === 'list') {
+                renderMatchScheduleList(current, container);
+                return;
+            }
+
+            const bracketSize = getNextPowerOfTwo(current.athletes.length);
+            const totalRounds = Math.log2(bracketSize);
+
+            let html = `<div class="flex items-center gap-10 py-2 min-w-max">`;
+
+            for (let r = 1; r <= totalRounds; r++) {
+                const roundMatches = current.matches.filter(m => m.round === r);
+                let roundTitle = `Babak Penyisihan`;
+                if (r === totalRounds) roundTitle = `BABAK FINAL`;
+                else if (r === totalRounds - 1) roundTitle = `SEMI FINAL`;
+                else if (r === totalRounds - 2) roundTitle = `PEREMPAT FINAL`;
+
+                html += `
+                    <div class="flex flex-col justify-around h-full gap-8">
+                        <div class="text-center">
+                            <span class="text-[10px] font-extrabold text-slate-400 tracking-wider uppercase bg-slate-900 border border-slate-800 px-3 py-1 rounded-full">
+                                ${roundTitle}
+                            </span>
+                        </div>
+                        <div class="flex flex-col justify-around flex-1 gap-8">
+                `;
+
+                roundMatches.forEach(m => {
+                    const isRedWinner = m.winner && m.red && m.winner.id === m.red.id;
+                    const isBlueWinner = m.winner && m.blue && m.winner.id === m.blue.id;
+
+                    html += `
+                        <div class="w-64 bg-slate-900 rounded-xl border border-slate-800/80 shadow-lg overflow-hidden match-card">
+                            <div class="bg-slate-950/80 px-3 py-1 border-b border-slate-800/60 flex items-center justify-between text-[10px]">
+                                <span class="font-bold text-amber-400 font-mono">PARTAI #${m.partaiNum}</span>
+                                <span class="text-slate-500 font-medium">${m.decisionType ? `Menang ${m.decisionType}` : 'Belum Bertanding'}</span>
+                            </div>
+
+                            <!-- Sudut Merah -->
+                            <div onclick="handleMatchCardClick('${m.id}')" class="p-2.5 border-b border-slate-800/50 flex items-center justify-between cursor-pointer hover:bg-slate-800/50 transition red-corner-bg ${isRedWinner ? 'bg-red-950/40 border-l-4 border-l-red-600' : ''}">
+                                <div class="min-w-0 pr-2">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2 h-2 rounded-full bg-red-600 shrink-0"></span>
+                                        <span class="text-xs font-bold truncate ${isRedWinner ? 'text-red-400' : 'text-slate-200'}">
+                                            ${m.red ? escapeHtml(m.red.name) : '—'}
+                                        </span>
+                                    </div>
+                                    <span class="text-[10px] text-slate-500 block truncate pl-3.5">
+                                        ${m.red ? escapeHtml(m.red.contingent) : '—'}
+                                    </span>
+                                </div>
+                                <span class="text-xs font-mono font-bold px-2 py-0.5 rounded ${isRedWinner ? 'bg-red-600 text-white' : 'bg-slate-950 text-slate-400'}">
+                                    ${m.scoreRed !== null ? m.scoreRed : '-'}
+                                </span>
+                            </div>
+
+                            <!-- Sudut Biru -->
+                            <div onclick="handleMatchCardClick('${m.id}')" class="p-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/50 transition blue-corner-bg ${isBlueWinner ? 'bg-blue-950/40 border-l-4 border-l-blue-600' : ''}">
+                                <div class="min-w-0 pr-2">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="w-2 h-2 rounded-full bg-blue-600 shrink-0"></span>
+                                        <span class="text-xs font-bold truncate ${isBlueWinner ? 'text-blue-400' : 'text-slate-200'}">
+                                            ${m.blue ? escapeHtml(m.blue.name) : '—'}
+                                        </span>
+                                    </div>
+                                    <span class="text-[10px] text-slate-500 block truncate pl-3.5">
+                                        ${m.blue ? escapeHtml(m.blue.contingent) : '—'}
+                                    </span>
+                                </div>
+                                <span class="text-xs font-mono font-bold px-2 py-0.5 rounded ${isBlueWinner ? 'bg-blue-600 text-white' : 'bg-slate-950 text-slate-400'}">
+                                    ${m.scoreBlue !== null ? m.scoreBlue : '-'}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            }
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function renderMatchScheduleList(current, container) {
+            let html = `
+                <div class="w-full space-y-3 max-w-2xl mx-auto">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Jadwal Urutan Partai Tanding</h3>
+                    <div class="divide-y divide-slate-800/80 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            `;
+
+            current.matches.forEach(m => {
+                html += `
+                    <div onclick="handleMatchCardClick('${m.id}')" class="p-3 flex items-center justify-between hover:bg-slate-800/60 cursor-pointer transition text-xs">
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-amber-400 font-mono w-16">PARTAI #${m.partaiNum}</span>
+                            <div>
+                                <div class="flex items-center gap-2 font-semibold">
+                                    <span class="text-red-400">${m.red ? escapeHtml(m.red.name) : 'BYE'}</span>
+                                    <span class="text-slate-500 text-[10px]">VS</span>
+                                    <span class="text-blue-400">${m.blue ? escapeHtml(m.blue.name) : 'BYE'}</span>
+                                </div>
+                                <span class="text-[10px] text-slate-500">Babak ${m.round}</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="px-2 py-1 rounded text-[10px] font-bold ${m.winner ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-950 text-slate-500'}">
+                                ${m.winner ? `Menang ${m.winner.name}` : 'Belum Main'}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div></div>`;
+            container.innerHTML = html;
+        }
+
+        function handleMatchCardClick(matchId) {
+            if (!isAdmin) {
+                openPinModal();
+                return;
+            }
+            openMatchModal(matchId);
+        }
+
+        /* --- MEDAL PODIUM RENDER --- */
+
+        function renderPodium() {
+            const current = getCurrentClass();
+            if (!current || !current.athletes) return;
+
+            const totalRounds = Math.log2(getNextPowerOfTwo(current.athletes.length));
+            if (!totalRounds || totalRounds < 1) return;
+
+            const finalMatch = current.matches ? current.matches.find(m => m.round === totalRounds) : null;
+            const semiMatches = current.matches ? current.matches.filter(m => m.round === totalRounds - 1) : [];
+
+            if (finalMatch && finalMatch.winner) {
+                document.getElementById('goldWinner').innerText = finalMatch.winner.name;
+                document.getElementById('goldContingent').innerText = finalMatch.winner.contingent;
+
+                const runnerUp = finalMatch.winner.id === finalMatch.red?.id ? finalMatch.blue : finalMatch.red;
+                if (runnerUp) {
+                    document.getElementById('silverWinner').innerText = runnerUp.name;
+                    document.getElementById('silverContingent').innerText = runnerUp.contingent;
+                }
+            } else {
+                document.getElementById('goldWinner').innerText = '—';
+                document.getElementById('goldContingent').innerText = '—';
+                document.getElementById('silverWinner').innerText = '—';
+                document.getElementById('silverContingent').innerText = '—';
+            }
+
+            let bronzeList = [];
+            semiMatches.forEach(sm => {
+                if (sm.winner) {
+                    const loser = sm.winner.id === sm.red?.id ? sm.blue : sm.red;
+                    if (loser) bronzeList.push(loser);
+                }
+            });
+
+            if (bronzeList.length > 0) {
+                document.getElementById('bronzeWinners').innerText = bronzeList.map(b => b.name).join(' & ');
+                document.getElementById('bronzeContingents').innerText = bronzeList.map(b => b.contingent).join(' / ');
+            } else {
+                document.getElementById('bronzeWinners').innerText = '—';
+                document.getElementById('bronzeContingents').innerText = '—';
+            }
+        }
+
+        /* --- MATCH MODAL & DECISIONS --- */
+
+        function openMatchModal(matchId) {
+            const current = getCurrentClass();
+            const match = current.matches.find(m => m.id === matchId);
+            if (!match || (!match.red && !match.blue)) return;
+
+            document.getElementById('modalMatchId').value = match.id;
+            document.getElementById('modalPartaiNum').innerText = `PARTAI #${match.partaiNum} - Babak ${match.round}`;
+
+            document.getElementById('modalRedName').innerText = match.red ? match.red.name : '— (BYE)';
+            document.getElementById('modalRedContingent').innerText = match.red ? match.red.contingent : '—';
+            document.getElementById('modalBlueName').innerText = match.blue ? match.blue.name : '— (BYE)';
+            document.getElementById('modalBlueContingent').innerText = match.blue ? match.blue.contingent : '—';
+
+            document.getElementById('modalRedScore').value = match.scoreRed !== null ? match.scoreRed : 0;
+            document.getElementById('modalBlueScore').value = match.scoreBlue !== null ? match.scoreBlue : 0;
+
+            if (match.winner && match.red && match.winner.id === match.red.id) {
+                document.getElementById('radioRed').checked = true;
+            } else if (match.winner && match.blue && match.winner.id === match.blue.id) {
+                document.getElementById('radioBlue').checked = true;
+            } else {
+                document.getElementById('radioRed').checked = false;
+                document.getElementById('radioBlue').checked = false;
+            }
+
+            if (match.decisionType && match.decisionType !== "BYE") {
+                document.getElementById('modalDecisionType').value = match.decisionType;
+            }
+
+            document.getElementById('matchModal').classList.remove('hidden');
+        }
+
+        function closeMatchModal() {
+            document.getElementById('matchModal').classList.add('hidden');
+        }
+
+        function saveMatchDecision(e) {
+            e.preventDefault();
+            if (!isAdmin) return;
+            const current = getCurrentClass();
+            const matchId = document.getElementById('modalMatchId').value;
+            const match = current.matches.find(m => m.id === matchId);
+
+            if (match) {
+                const winnerChoice = document.querySelector('input[name="winnerSelection"]:checked')?.value;
+                const scoreRed = parseInt(document.getElementById('modalRedScore').value) || 0;
+                const scoreBlue = parseInt(document.getElementById('modalBlueScore').value) || 0;
+                const decisionType = document.getElementById('modalDecisionType').value;
+
+                match.scoreRed = scoreRed;
+                match.scoreBlue = scoreBlue;
+
+                if (winnerChoice === 'red') {
+                    match.winner = match.red;
+                } else if (winnerChoice === 'blue') {
+                    match.winner = match.blue;
+                }
+
+                match.decisionType = decisionType;
+
+                propagateWinnersForClass(current);
+                renderCurrentClass();
+                closeMatchModal();
+                pushStateToCloud();
+            }
+        }
+
+        /* --- NOTIFICATIONS & UTILS --- */
+
+        function showNotification(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-4 sm:translate-x-0 bg-slate-800 text-slate-100 border border-slate-700 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xl z-50 flex items-center gap-2 max-w-[90vw] truncate';
+            toast.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400 shrink-0"></i> <span>${msg}</span>`;
+            document.body.appendChild(toast);
+            lucide.createIcons();
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
