@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Bagan Pertandingan Pencak Silat Real-Time (IPSI)</title>
+    <!--
+      Production realtime:
+      Set window.__FIREBASE_CONFIG__ to your Firebase Web App config before this
+      module loads, or inject __firebase_config from the hosting environment.
+      Firestore onSnapshot then syncs all connected devices in real time.
+    -->
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Icons -->
@@ -66,6 +72,47 @@
             .red-corner-bg { background-color: #fee2e2 !important; color: #991b1b !important; }
             .blue-corner-bg { background-color: #dbeafe !important; color: #1e40af !important; }
         }
+    
+        /* === RESPONSIVE DEVICE / TOUCH SYSTEM === */
+        :root { color-scheme: dark; }
+        html { min-width: 320px; overflow-x: hidden; }
+        body { min-height: 100dvh; overflow-x: hidden; }
+        button, input, select, textarea { touch-action: manipulation; }
+        button { -webkit-tap-highlight-color: transparent; }
+        .safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+        /* Keep the bracket usable on phones: scroll the canvas, not the page. */
+        #bracketContainer {
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x pan-y;
+            scrollbar-gutter: stable;
+        }
+        #bracketView { transform-origin: left top; min-width: max-content; }
+        .match-card { flex: 0 0 auto; }
+
+        @media (max-width: 639px) {
+            header { position: sticky; top: 0; }
+            main { padding-left: .75rem; padding-right: .75rem; }
+            #bracketContainer { min-height: 340px; padding-left: .75rem; padding-right: .75rem; }
+            #bracketView { min-width: max-content; }
+            .match-card { width: min(18rem, 78vw); }
+        }
+
+        @media (min-width: 640px) and (max-width: 1023px) {
+            #classView { min-width: 0; }
+            #bracketContainer { min-height: 400px; }
+        }
+
+        @media (orientation: landscape) and (max-height: 600px) {
+            header { position: relative; }
+            #bracketContainer { min-height: 280px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+        }
+
     </style>
 </head>
 <body class="h-full flex flex-col font-sans antialiased bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
@@ -571,26 +618,36 @@
 
         // Environment variables or defaults
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'silat-tournament-app';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "demo-api-key",
-            authDomain: "demo-project.firebaseapp.com",
-            projectId: "demo-project",
-            storageBucket: "demo-project.appspot.com",
-            messagingSenderId: "123456789",
-            appId: "1:123456789:web:abcdef"
-        };
+        // GitHub Pages/static hosting: define window.__FIREBASE_CONFIG__ before this module
+        // (or let the host environment inject __firebase_config).
+        // The old demo credentials were intentionally removed because they cannot sync data.
+        const firebaseConfig = typeof __firebase_config !== 'undefined'
+            ? JSON.parse(__firebase_config)
+            : (window.__FIREBASE_CONFIG__ || null);
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        let app = null;
+        let auth = null;
+        let db = null;
+        let firebaseReady = false;
+
+        if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId) {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            firebaseReady = true;
+        } else {
+            console.warn("Firebase belum dikonfigurasi. Mode fallback lokal/tab akan digunakan.");
+        }
 
         window.firebaseApp = app;
         window.firebaseAuth = auth;
         window.firebaseDb = db;
         window.appIdEnv = appId;
+        window.firebaseReady = firebaseReady;
 
         // Initialize Authentication first
         async function initAuth() {
+            if (!firebaseReady) return;
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
@@ -605,16 +662,21 @@
         window.initFirebaseSync = async function(roomCode, onDataReceived) {
             await initAuth();
 
+            if (!firebaseReady) {
+                return {
+                    saveData: async () => {},
+                    unsubscribe: () => {}
+                };
+            }
+
             const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournaments', roomCode);
-            
-            // Real-time listener
+
+            // Firestore onSnapshot gives every connected client the newest document.
             const unsubscribe = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     onDataReceived(docSnap.data());
-                } else {
-                    // Initialize empty tournament structure
-                    const initialData = getInitialAppState();
-                    setDoc(docRef, initialData);
+                } else if (auth.currentUser) {
+                    setDoc(docRef, getInitialAppState()).catch(console.error);
                 }
             }, (error) => {
                 console.error("Firestore sync error:", error);
@@ -641,6 +703,10 @@
         let adminPin = "1234";
         let syncHandler = null;
         let currentZoom = 1.0;
+        let roomChannel = null;
+        let localSyncReady = false;
+        let lastLocalRevision = 0;
+        window.__silatTabId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
         let appState = getInitialAppState();
         let bracketDisplayMode = 'bracket'; // 'bracket' or 'list'
@@ -735,6 +801,12 @@
             updateRoleUI();
             connectRoomSync(roomCode);
             lucide.createIcons();
+
+            // Keep the UI fresh during development when the HTML is edited by a
+            // local server/live-reload tool, without polling the tournament data.
+            window.addEventListener('resize', () => {
+                requestAnimationFrame(applyBracketZoom);
+            }, { passive: true });
         };
 
         /* --- REAL-TIME CLOUD SYNC CONTROLLER --- */
@@ -742,6 +814,27 @@
         async function connectRoomSync(targetRoom) {
             roomCode = targetRoom.toUpperCase();
             document.getElementById('displayRoomCode').innerText = roomCode;
+
+            // Same-browser instant sync fallback. This complements Firestore and
+            // makes development with multiple tabs update immediately.
+            if (roomChannel) roomChannel.close();
+            localSyncReady = false;
+            if ('BroadcastChannel' in window) {
+                roomChannel = new BroadcastChannel('silat-room:' + roomCode);
+                roomChannel.onmessage = (event) => {
+                    const msg = event.data;
+                    if (!msg || msg.type !== 'STATE' || msg.room !== roomCode || msg.source === window.__silatTabId) return;
+                    if (msg.revision && msg.revision <= lastLocalRevision) return;
+                    lastLocalRevision = msg.revision || Date.now();
+                    if (msg.data && msg.data.classes) {
+                        appState = msg.data;
+                        ensureClassStructure();
+                        renderClassTabs();
+                        appState.activeTab === 'dashboard' ? renderDashboard() : renderCurrentClass();
+                    }
+                };
+            }
+            localSyncReady = true;
 
             // Safely update URL search params without crashing in blob or sandboxed environments
             try {
@@ -774,7 +867,23 @@
         }
 
         function pushStateToCloud() {
-            if (syncHandler && syncHandler.saveData && isAdmin) {
+            if (!isAdmin) return;
+
+            // Broadcast immediately for other tabs/windows on this device.
+            if (roomChannel && localSyncReady) {
+                lastLocalRevision = Date.now();
+                roomChannel.postMessage({
+                    type: 'STATE',
+                    room: roomCode,
+                    revision: lastLocalRevision,
+                    source: window.__silatTabId,
+                    data: JSON.parse(JSON.stringify(appState))
+                });
+            }
+
+            // Persist to Firestore when configured; onSnapshot then distributes
+            // the same state to phones, tablets and computers over the internet.
+            if (syncHandler && syncHandler.saveData) {
                 syncHandler.saveData(appState);
             }
         }
@@ -1353,7 +1462,7 @@
             const bracketSize = getNextPowerOfTwo(current.athletes.length);
             const totalRounds = Math.log2(bracketSize);
 
-            let html = `<div class="flex items-center gap-10 py-2 min-w-max">`;
+            let html = `<div class="flex items-center gap-6 sm:gap-10 py-2 min-w-max">`;
 
             for (let r = 1; r <= totalRounds; r++) {
                 const roundMatches = current.matches.filter(m => m.round === r);
